@@ -7,7 +7,10 @@
  *
  */
 
-
+// If you have a c++11 compatible compiler, you can uncomment the following line.
+// This will parallelize the computation and thus greatly improve performance of the model building.
+// (This also requires that ITK was compiled with C++11 support)
+//#define HAS_CXX11_ASYNC 1
 
 #include "itkStandardMeshRepresenter.h"
 #include "statismo_ITK/itkStatisticalModel.h"
@@ -67,6 +70,8 @@ int main(int argc, char *argv[]) {
     typedef itk::StatisticalModel<MeshType> StatisticalModelType;
     typedef itk::MeshFileReader<MeshType>  MeshFileReaderType;
 
+    const unsigned numNystromPoints = 500;
+
     if (argc != 6) {
         std::cout << "usage\t" << argv[0] << " referenceFilename kernelWidth kernelScale numberOfBasisFunctions outputFilename" << std::endl;
         exit(-1);
@@ -89,7 +94,7 @@ int main(int argc, char *argv[]) {
 
     typename ModelBuilderType::Pointer gpModelBuilder = ModelBuilderType::New();
     gpModelBuilder->SetRepresenter(representer);
-    typename StatisticalModelType::Pointer model = gpModelBuilder->BuildNewModel(representer->GetReference(), gk, numBasisFunctions);
+    typename StatisticalModelType::Pointer model = gpModelBuilder->BuildNewModel(representer->GetReference(), gk, numBasisFunctions, numNystromPoints);
     model->Save(outputFn.c_str());
 }
 
