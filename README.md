@@ -18,7 +18,7 @@ buildgpmodel data/VSD001_femur.vtk 50 50 100 femurmodel.h5
 ```
 This build a Gaussian Process model with the name femurmodel.h5, where a Gaussian Kernel of bandwith 50 and scale 50 is approximated using 100 basis functions
 (see the [paper](http://gravis.cs.unibas.ch/publications/2013/MLMI-Luethi_etal-2013.pdf) for details.)
-The model and the variations can be visualized using the [statismo modelviewer](http://statismo.cs.unibas.ch/statismo-ui.jar).
+The model variations can be visualized using the [statismo modelviewer](http://statismo.cs.unibas.ch/statismo-ui.jar).
 
 In the next step, the model is fitted (registered) with the target shape.
 
@@ -29,7 +29,7 @@ shaperegistration femurmodel.h5  data/VSD002_femur.vtk 0.01 fitting-result.vtk p
 This command performs a fitting to the target surface VSD002_femur.vtk using a regularization weight of 0.01 and stores the fitting result
 and a projection on the target surface. (Note, that it is assumed that the target surface is already aligned with the model.)
 
-In order to force correspondence, it is also possible to specify a number of landmark points that should be matched
+It is also possible to explicitly enforce correspondences at given landmark points. This can be done by specifying in addition matching landmark points defined on both surfaces.
 ```
 shaperegistration femurmodel.h5  data/VSD002_femur.vtk 0.01 fitting-result.vtk projection.vtk VSD001-lm.csv VSD002-lm.csv 1
 
