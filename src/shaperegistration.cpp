@@ -12,12 +12,10 @@
 #include "itkStandardMeshRepresenter.h"
 #include "statismo_ITK/itkStatisticalModel.h"
 #include "statismo_ITK/itkStatisticalShapeModelTransform.h"
-#include "itkMeanSquaresPointSetToImageMetric.h"
+#include "itkPenalizingMeanSquaresPointSetToImageMetric.h"
 #include "itkLBFGSOptimizer.h"
 #include "itkRegularStepGradientDescentOptimizer.h"
 #include "itkPointSetToImageRegistrationMethod.h"
-#include "itkMeshFileReader.h"
-#include "itkMeshFileWriter.h"
 #include "itkCommand.h"
 #include "itkMesh.h"
 #include "itkTransformMeshFilter.h"
@@ -26,15 +24,37 @@
 #include "itkPointsLocator.h"
 #include "itkPointSetToImageFilter.h"
 #include "itkLinearInterpolateImageFunction.h"
+#include "utils.h"
 
+
+//
+// config values for the optimizer
+//
+struct Config {
+    // how much margin will be added around the bounding box of the reference shape
+    const static double imageMargin;
+
+    // exit criterion for the optimizer
+    static const double gradientTolerance;
+
+    // the number of iterations for the optimization
+    static const unsigned numberOfIterations;
+};
+const double Config::imageMargin = 50;
+const double Config::gradientTolerance = 1e-12;
+const unsigned Config::numberOfIterations = 100;
+
+
+//
+// the types that we need later on
+//
 const unsigned Dimensions = 3;
 typedef itk::PointSet<float, Dimensions  > PointSetType;
 typedef itk::Mesh<float, Dimensions  > MeshType;
 typedef itk::Point<double, 3> PointType;
 typedef itk::Image<float, Dimensions> DistanceImageType;
 typedef itk::StandardMeshRepresenter<float, Dimensions> RepresenterType;
-typedef itk::MeshFileReader<MeshType> MeshReaderType;
-typedef itk::MeanSquaresPointSetToImageMetric<PointSetType, DistanceImageType> MetricType;
+typedef itk::PenalizingMeanSquaresPointSetToImageMetric<PointSetType, DistanceImageType> MetricType;
 typedef itk::StatisticalShapeModelTransform<MeshType, double, Dimensions> StatisticalModelTransformType;
 typedef itk::StatisticalModel<MeshType> StatisticalModelType;
 typedef itk::PointSetToImageRegistrationMethod<PointSetType,DistanceImageType > RegistrationFilterType;
@@ -53,63 +73,10 @@ typedef itk::PointsLocator<int, 3, double, MeshType::PointsContainer > PointsLoc
 #endif
 
 
-struct Config {
-    const static double imageMargin;
-    static const double gradientTolerance;
-    static const unsigned numberOfIterations;
-};
-const double Config::imageMargin = 50;
-const double Config::gradientTolerance = 1e-5;
-const unsigned Config::numberOfIterations = 100;
-
-
-
-class Utils {
-public:
-    /**
-     * read landmarks from the given file in slicer fcsv formant and return them as a list.
-     *
-     * The format is: label,x,y,z
-     *
-     * @param filename the filename
-     * @returns A list of itk points
-     */
-    static std::vector<PointType > readLandmarks(const std::string& filename) {
-
-        std::vector<PointType> ptList;
-
-        std::fstream file ( filename.c_str() );
-        if (!file) {
-            std::cout << "could not read landmark file " << std::endl;
-            throw std::runtime_error("could not read landmark file ");
-        }
-        std::string line;
-        while (  std::getline ( file, line))
-        {
-            if (line.length() > 0 && line[0] == '#')
-                continue;
-
-            std::istringstream strstr(line);
-            std::string token;
-            std::getline(strstr, token, ','); // ignore the label
-            std::getline(strstr, token, ','); // get the x coord
-            double pt0 = atof(token.c_str());
-            std::getline(strstr, token, ','); // get the y coord
-            double pt1 = atof(token.c_str());
-            std::getline(strstr, token, ','); // get the z coord
-            double pt2 = atof(token.c_str());
-            PointType pt;
-            pt[0] = pt0; pt[1] = pt1; pt[2] = pt2;
-            ptList.push_back(pt);
-        }
-        return ptList;
-    }
-
-};
-
-
-// Returns a new model, that is restricted to go through the proints specified in targetLandmarks..
-//
+ /*
+ * Compute a new model, which is restricted to go through the proints specified in targetLandmarks.
+ * The variance argument specifies the assumed landmark inaccuracy (assuming the landmark inaccuracy is modeled as a zero-mean gaussian).
+ */
 StatisticalModelType::Pointer
 computePosteriorModel( const StatisticalModelType* statisticalModel,
                        const  std::vector<PointType >& modelLandmarks,
@@ -117,7 +84,6 @@ computePosteriorModel( const StatisticalModelType* statisticalModel,
                       double variance)
 {
 
-        // invert the transformand back transform the landmarks
         StatisticalModelType::PointValueListType constraints;
 
         // We need to make sure the the points in fixed landmarks are real vertex points of the model reference.
@@ -145,11 +111,72 @@ computePosteriorModel( const StatisticalModelType* statisticalModel,
 }
 
 
+/*
+ * Compute a distance image from the given mesh. The distance image will be the size of the bounding box of the point set,
+ * plus the given margin.
+ */
+DistanceImageType::Pointer distanceImageFromMesh(MeshType* mesh, double margin) {
 
-//
-// This class is used to track the progress of the optimization
-// (its method Execute is called in each iteration of the optimization)
-//
+    // Compute a bounding box around the reference shape
+    typedef  itk::BoundingBox<int, 3, float, MeshType::PointsContainer> BoundingBoxType;
+    BoundingBoxType::Pointer bb = BoundingBoxType::New();
+    bb->SetPoints(mesh->GetPoints());
+    bb->ComputeBoundingBox();
+
+    // Compute a binary image from the point set, which is as large as the bounding box plus a margin.
+    PointsToImageFilterType::Pointer pointsToImageFilter = PointsToImageFilterType::New();
+    pointsToImageFilter->SetInput( mesh );
+    BinaryImageType::SpacingType spacing; spacing.Fill( 1.0 );
+    BinaryImageType::PointType origin = bb->GetMinimum();
+    BinaryImageType::SpacingType diff = bb->GetMaximum() - bb->GetMinimum();
+    BinaryImageType::SizeType size;
+    for (unsigned i =0; i < 3; i++) {
+        origin[i] -= margin; // a five cm margin
+        size[i] = diff[i] + margin;
+    }
+
+
+    pointsToImageFilter->SetSpacing( spacing );
+    pointsToImageFilter->SetOrigin( origin );
+    pointsToImageFilter->SetSize( size);
+    pointsToImageFilter->Update();
+
+    // compute a distance map to the points in the pointset
+    BinaryImageType::Pointer binaryImage = pointsToImageFilter->GetOutput();
+    DistanceFilterType::Pointer distanceFilter = DistanceFilterType::New();
+    distanceFilter->SetInput( binaryImage );
+    distanceFilter->Update();
+    DistanceImageType::Pointer distanceImage = distanceFilter->GetOutput();
+    return distanceImage;
+}
+
+
+
+/*
+ * Project every point of mesh to the closest point on the target and returns the
+ * resulting projected (mesh).
+ */
+MeshType::Pointer projectOnTargetMesh(MeshType* mesh, MeshType* targetMesh) {
+
+    PointsLocatorType::Pointer ptLocator = PointsLocatorType::New();
+    ptLocator->SetPoints(targetMesh->GetPoints());
+    ptLocator->Initialize();
+
+    MeshType::Pointer projectedMesh = Utils::cloneMesh<MeshType>(mesh);
+    for (unsigned i = 0; i < mesh->GetNumberOfPoints(); i++) {
+        MeshType::PointType pt = mesh->GetPoint(i);
+        int closestPointId = ptLocator->FindClosestPoint(pt);
+        MeshType::PointType closestPt = targetMesh->GetPoint(closestPointId);
+        projectedMesh->SetPoint(i, closestPt);
+    }
+    return projectedMesh;
+
+}
+
+/*
+ * This class is used to track the progress of the optimization
+ * (its method Execute is called in each iteration of the optimization)
+*/
 class IterationStatusObserver : public itk::Command
 {
 public:
@@ -197,36 +224,39 @@ private:
 
 };
 
-
+/*
+ * Perform a registration (fitting) of the Gaussian Process model to the target mesh. Write the resulting mesh into the file specified
+ * by outputmesh. Optionally, the user can specify matching landmark points on the shape. These will be matched during the fitting.
+ * The lmvariance argument specifies the assumed landmark inaccuracy (assuming the landmark inaccuracy is modeled as a zero-mean gaussian).
+ */
 int main(int argc, char* argv[]) {
 
 
-    if (argc < 4) {
-        std::cout << "usage " << argv[0] << " modelname shape outputmesh [fixedLandmarks movingLandmarks lmVariance] " << std::endl;
+    if (argc < 6) {
+        std::cout << "usage " << argv[0] << " modelname targetmesh regWeight fittedmesh projectedMesh [fixedLandmarks movingLandmarks lmVariance] " << std::endl;
         exit(-1);
     }
 
     char* modelName = argv[1];
     char* targetName = argv[2];
-    char* outputMeshName = argv[3];
+    double regWeight = atof(argv[3]);
+    char* fittedMeshName = argv[4];
+    char* projectedMeshName = argv[5];
 
     char* fixedLandmarksName = 0;
     char* movingLandmarksName = 0;
     double lmVariance = 0;
 
-    if (argc == 7) {
-        fixedLandmarksName = argv[4];
-        movingLandmarksName = argv[5];
-        lmVariance = atof(argv[6]);
+    if (argc == 9) {
+        fixedLandmarksName = argv[6];
+        movingLandmarksName = argv[7];
+        lmVariance = atof(argv[8]);
     }
 
 
 
     // load the Surface to which we will fit
-    MeshReaderType::Pointer targetReader = MeshReaderType::New();
-    targetReader->SetFileName(targetName);
-    targetReader->Update();
-    MeshType::Pointer mesh = targetReader->GetOutput();
+    MeshType::Pointer targetMesh = Utils::readMesh<MeshType>(targetName);
 
     // load the model
     StatisticalModelType::Pointer model = StatisticalModelType::New();
@@ -256,36 +286,9 @@ int main(int argc, char* argv[]) {
     statModelTransform->SetStatisticalModel(constrainedModel);
     statModelTransform->SetIdentity();
 
-    // Compute a bounding box around the reference shape
-    typedef  itk::BoundingBox<int, 3, float, MeshType::PointsContainer> BoundingBoxType;
-    BoundingBoxType::Pointer bb = BoundingBoxType::New();
-    bb->SetPoints(representer->GetReference()->GetPoints());
-    bb->ComputeBoundingBox();
 
-    // Compute a binary image from the point set, which is as large as the bounding box plus a margin.
-    PointsToImageFilterType::Pointer pointsToImageFilter = PointsToImageFilterType::New();
-    pointsToImageFilter->SetInput( mesh );
-    BinaryImageType::SpacingType spacing; spacing.Fill( 1.0 );
-    BinaryImageType::PointType origin = bb->GetMinimum();
-    BinaryImageType::SpacingType diff = bb->GetMaximum() - bb->GetMinimum();
-    BinaryImageType::SizeType size;
-    for (unsigned i =0; i < 3; i++) {
-        origin[i] -= Config::imageMargin; // a five cm margin
-        size[i] = diff[i] + Config::imageMargin;
-    }
-
-
-    pointsToImageFilter->SetSpacing( spacing );
-    pointsToImageFilter->SetOrigin( origin );
-    pointsToImageFilter->SetSize( size);
-    pointsToImageFilter->Update();
-
-    // compute a distance map to the points in the pointset
-    BinaryImageType::Pointer binaryImage = pointsToImageFilter->GetOutput();
-    DistanceFilterType::Pointer distanceFilter = DistanceFilterType::New();
-    distanceFilter->SetInput( binaryImage );
-    distanceFilter->Update();
-    DistanceImageType::Pointer distanceImage = distanceFilter->GetOutput();
+    // The actual fitting will be done to a distance image representation of the mesh.
+    DistanceImageType::Pointer distanceImage = distanceImageFromMesh(targetMesh, Config::imageMargin);
 
 
     // set up the optimizer
@@ -304,6 +307,7 @@ int main(int argc, char* argv[]) {
 
     // set up the metric and interpolators
     MetricType::Pointer metric = MetricType::New();
+    metric->SetRegularizationParameter(regWeight);
     InterpolatorType::Pointer interpolator = InterpolatorType::New();
 
     // we create the fixedPointSet of the registration from the reference mesh of our model.
@@ -342,12 +346,17 @@ int main(int argc, char* argv[]) {
     TransformMeshFilterType::Pointer transformMeshFilter = TransformMeshFilterType::New();
     transformMeshFilter->SetInput(model->GetRepresenter()->GetReference());
     transformMeshFilter->SetTransform(statModelTransform);
+    transformMeshFilter->Update();
 
-    // Write out the fitting result
-    itk::MeshFileWriter<MeshType>::Pointer writer = itk::MeshFileWriter<MeshType>::New();
-    writer->SetFileName(outputMeshName);
-    writer->SetInput(transformMeshFilter->GetOutput());
-    writer->Update();
+
+    // We might be interested in both the fitting result (which is an approximation to the target
+    // or an actual projection of the fitted mesh onto the target. We compute and  write both.
+
+    MeshType::Pointer fittedMesh = transformMeshFilter->GetOutput();
+    MeshType::Pointer projectedMesh = projectOnTargetMesh(fittedMesh, targetMesh);
+
+    Utils::writeMesh<MeshType>(fittedMesh, fittedMeshName);
+    Utils::writeMesh<MeshType>(projectedMesh, projectedMeshName);
 
 }
 

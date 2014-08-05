@@ -19,9 +19,7 @@
 #include "itkMesh.h"
 
 
-
-
-/**
+/*
  * The kernel defines our prior assumptions about the deformations in the registration.
  * Here we use a simple Gaussian Kernel, which leads to smooth deformations. We assume that the
  * components of the deformation field are uncorrelated.
@@ -59,7 +57,10 @@ private:
 
 
 
-
+/*
+ * Computes a new GaussianProcess model using the GaussianKernel with kernelWidth and given scale. The numberOfBasisFunctions argument
+ * specifies how many basis functions are used to approximate the kernel. The model is written to the file with the given outputFilename.
+ */
 int main(int argc, char *argv[]) {
 
     typedef itk::StandardMeshRepresenter<float, 3> RepresenterType;
@@ -70,6 +71,7 @@ int main(int argc, char *argv[]) {
     typedef itk::StatisticalModel<MeshType> StatisticalModelType;
     typedef itk::MeshFileReader<MeshType>  MeshFileReaderType;
 
+    // The number of points that are used for the nystrom approximation. The more points you chose here, the better the approximation (and the slower the computation)
     const unsigned numNystromPoints = 500;
 
     if (argc != 6) {
