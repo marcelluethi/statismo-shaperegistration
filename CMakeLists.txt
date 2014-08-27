@@ -1,7 +1,8 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(statismo-shaperegistration)
 
-FIND_PACKAGE(STATISMO REQUIRED)
+FIND_PACKAGE(statismo REQUIRED)
+include_directories( ${statismo_INCLUDE_DIRS} )
 
 FIND_PACKAGE(ITK REQUIRED)
 include (${ITK_USE_FILE})

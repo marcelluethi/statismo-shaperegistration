@@ -10,8 +10,8 @@
 
 #include "itkBoundingBox.h"
 #include "itkStandardMeshRepresenter.h"
-#include "statismo_ITK/itkStatisticalModel.h"
-#include "statismo_ITK/itkStatisticalShapeModelTransform.h"
+#include "itkStatisticalModel.h"
+#include "itkStatisticalShapeModelTransform.h"
 #include "itkPenalizingMeanSquaresPointSetToImageMetric.h"
 #include "itkLBFGSOptimizer.h"
 #include "itkRegularStepGradientDescentOptimizer.h"
