@@ -21,7 +21,7 @@ link_directories( ${ITK_LIBRARY_DIRS})
 
 
 add_executable (shaperegistration src/shaperegistration.cpp)
-target_link_libraries (shaperegistration ${ITK_LIBRARIES})
+target_link_libraries (shaperegistration ${statismo_LIBRARIES} ${ITK_LIBRARIES})
 
 add_executable (buildgpmodel src/buildgpmodel.cpp)
-target_link_libraries (buildgpmodel ${ITK_LIBRARIES})
+target_link_libraries (buildgpmodel ${statismo_LIBRARIES} ${ITK_LIBRARIES})
