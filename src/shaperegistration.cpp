@@ -31,19 +31,22 @@
 // config values for the optimizer
 //
 struct Config {
-    // how much margin will be added around the bounding box of the reference shape
-    const static double imageMargin;
 
     // exit criterion for the optimizer
     static const double gradientTolerance;
 
     // the number of iterations for the optimization
     static const unsigned numberOfIterations;
-};
-const double Config::imageMargin = 50;
-const double Config::gradientTolerance = 1e-12;
-const unsigned Config::numberOfIterations = 100;
 
+    // the resolution of the distance image 
+    static const unsigned distImageResolution;
+
+    static const double lineSearchAccuracy;
+};
+const double Config::gradientTolerance = 0;
+const unsigned Config::numberOfIterations = 100;
+const unsigned Config::distImageResolution = 256;
+const double Config::lineSearchAccuracy = 0.01;
 
 //
 // the types that we need later on
@@ -115,7 +118,7 @@ computePosteriorModel( const StatisticalModelType* statisticalModel,
  * Compute a distance image from the given mesh. The distance image will be the size of the bounding box of the point set,
  * plus the given margin.
  */
-DistanceImageType::Pointer distanceImageFromMesh(MeshType* mesh, double margin) {
+DistanceImageType::Pointer distanceImageFromMesh(MeshType* mesh) {
 
     // Compute a bounding box around the reference shape
     typedef  itk::BoundingBox<int, 3, float, MeshType::PointsContainer> BoundingBoxType;
@@ -126,13 +129,17 @@ DistanceImageType::Pointer distanceImageFromMesh(MeshType* mesh, double margin) 
     // Compute a binary image from the point set, which is as large as the bounding box plus a margin.
     PointsToImageFilterType::Pointer pointsToImageFilter = PointsToImageFilterType::New();
     pointsToImageFilter->SetInput( mesh );
-    BinaryImageType::SpacingType spacing; spacing.Fill( 1.0 );
+    BinaryImageType::SpacingType spacing; 
+    BinaryImageType::SpacingType margin; 
     BinaryImageType::PointType origin = bb->GetMinimum();
-    BinaryImageType::SpacingType diff = bb->GetMaximum() - bb->GetMinimum();
+    BinaryImageType::SpacingType diff = bb->GetMaximum() - bb->GetMinimum();    
     BinaryImageType::SizeType size;
+    
     for (unsigned i =0; i < 3; i++) {
-        origin[i] -= margin; // a five cm margin
-        size[i] = diff[i] + margin;
+        margin[i] = diff[i] * 0.1; // 10 % margin on each side
+        origin[i] -= margin[i]; 
+        size[i] = Config::distImageResolution + margin[i];
+        spacing[i] = (diff[i] + 2.0 * margin[i]) / Config::distImageResolution;
     }
 
 
@@ -288,17 +295,17 @@ int main(int argc, char* argv[]) {
 
 
     // The actual fitting will be done to a distance image representation of the mesh.
-    DistanceImageType::Pointer distanceImage = distanceImageFromMesh(targetMesh, Config::imageMargin);
+    DistanceImageType::Pointer distanceImage = distanceImageFromMesh(targetMesh);
 
 
     // set up the optimizer
     OptimizerType::Pointer optimizer = OptimizerType::New();
-    const unsigned long numberOfIterations = Config::numberOfIterations;
-    const double gradientTolerance = Config::gradientTolerance; // convergence criterion
 
-    optimizer->SetMaximumNumberOfFunctionEvaluations(numberOfIterations );
-    optimizer->SetGradientConvergenceTolerance(gradientTolerance );
+    optimizer->SetMaximumNumberOfFunctionEvaluations(Config::numberOfIterations);
+    optimizer->SetGradientConvergenceTolerance(Config::gradientTolerance);
+    optimizer->SetLineSearchAccuracy(Config::lineSearchAccuracy);
     optimizer->MinimizeOn();
+
 
     // set up the observer to keep track of the progress
     typedef  IterationStatusObserver ObserverType;
