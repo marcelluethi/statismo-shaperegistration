@@ -13,8 +13,8 @@
 //#define HAS_CXX11_ASYNC 1
 
 #include "itkStandardMeshRepresenter.h"
-#include "statismo_ITK/itkStatisticalModel.h"
-#include "statismo_ITK/itkLowRankGPModelBuilder.h"
+#include "itkStatisticalModel.h"
+#include "itkLowRankGPModelBuilder.h"
 #include "itkMeshFileReader.h"
 #include "itkMesh.h"
 

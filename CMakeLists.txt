@@ -1,7 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(statismo-shaperegistration)
 
-FIND_PACKAGE(STATISMO REQUIRED)
+FIND_PACKAGE(statismo REQUIRED)
 
 FIND_PACKAGE(ITK REQUIRED)
 include (${ITK_USE_FILE})
@@ -14,13 +14,13 @@ find_path(ITK_HDF5_INCLUDE_DIR_CPP H5Cpp.h PATHS ${ITK_INCLUDE_DIRS} PATH_SUFFIX
 
 set(ITK_HDF5_INCLUDE_DIRS ${ITK_HDF5_INCLUDE_DIR} ${ITK_HDF5_INCLUDE_DIR_CPP})
 
-include_directories(${STATISMO_INCLUDE_DIRS} ${ITK_HDF5_INCLUDE_DIRS}) 
+include_directories(${statismo_INCLUDE_DIRS} ${ITK_HDF5_INCLUDE_DIRS}) 
 
-link_directories( ${ITK_LIBRARY_DIRS})
+link_directories( ${ITK_LIBRARY_DIRS} ${statismo_LIBRARY_DIRS})
 
 
 add_executable (shaperegistration src/shaperegistration.cpp)
-target_link_libraries (shaperegistration ${ITK_LIBRARIES})
+target_link_libraries (shaperegistration ${ITK_LIBRARIES} ${statismo_LIBRARIES})
 
 add_executable (buildgpmodel src/buildgpmodel.cpp)
-target_link_libraries (buildgpmodel ${ITK_LIBRARIES})
+target_link_libraries (buildgpmodel ${ITK_LIBRARIES} ${statismo_LIBRARIES})
