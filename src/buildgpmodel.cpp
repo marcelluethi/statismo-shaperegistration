@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
 
     typedef itk::StandardMeshRepresenter<float, 3> RepresenterType;
     typedef RepresenterType::DatasetType MeshType;
-    typedef typename RepresenterType::PointType PointType;
+    typedef  RepresenterType::PointType PointType;
 
     typedef itk::LowRankGPModelBuilder<MeshType> ModelBuilderType;
     typedef itk::StatisticalModel<MeshType> StatisticalModelType;
@@ -85,18 +85,18 @@ int main(int argc, char *argv[]) {
     double numBasisFunctions = std::atoi(argv[4]);
     std::string outputFn = argv[5];
 
-    typename MeshFileReaderType::Pointer referenceReader = MeshFileReaderType::New();
+    MeshFileReaderType::Pointer referenceReader = MeshFileReaderType::New();
     referenceReader->SetFileName(referenceFn);
     referenceReader->Update();
 
-    typename RepresenterType::Pointer representer = RepresenterType::New();
+    RepresenterType::Pointer representer = RepresenterType::New();
     representer->SetReference(referenceReader->GetOutput());
 
     const GaussianKernel<PointType> gk = GaussianKernel<PointType>(kernelWidth * kernelWidth, kernelScale);
 
-    typename ModelBuilderType::Pointer gpModelBuilder = ModelBuilderType::New();
+    ModelBuilderType::Pointer gpModelBuilder = ModelBuilderType::New();
     gpModelBuilder->SetRepresenter(representer);
-    typename StatisticalModelType::Pointer model = gpModelBuilder->BuildNewModel(representer->GetReference(), gk, numBasisFunctions, numNystromPoints);
+    StatisticalModelType::Pointer model = gpModelBuilder->BuildNewModel(representer->GetReference(), gk, numBasisFunctions, numNystromPoints);
     model->Save(outputFn.c_str());
 }
 
